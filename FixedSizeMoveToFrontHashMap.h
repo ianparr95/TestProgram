@@ -10,10 +10,16 @@ typedef struct Node
 typedef struct HeadNode
 {
     struct Node* head;
-    pthread_mutex_t* lock;
+    int numElements;
 } HeadNode;
 
-typedef HeadNode** FixedSizeHashTable;
+typedef struct HeadNodeAndLock
+{
+    HeadNode* headNode;
+    pthread_mutex_t* lock;
+} HeadNodeAndLock;
+
+typedef HeadNodeAndLock** FixedSizeHashTable;
 
 FixedSizeHashTable CreateFixedSizeHashMap(long);
 
