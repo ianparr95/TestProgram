@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-int __INTERNAL_removeNode(HeadNode* headNode, void* key, int (*equalityCheck)(void*, void*));
+int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen, int (*equalityCheck)(void*, void*));
 
 FixedSizeHashTable CreateFixedSizeHashMap(long size)
 {
@@ -16,13 +16,17 @@ FixedSizeHashTable CreateFixedSizeHashMap(long size)
     }
     return table;
 }
-void Insert(FixedSizeHashTable table, void* key, void* value, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
+
+short KEYLEN = 4;
+
+void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
 {
     long index = hashFunction(key);
 
     Node* node = malloc(sizeof(Node));
     node->key = key;
     node->value = value;
+    node->valueLen = valueLen;
 
     pthread_mutex_lock(table[index]->lock);
     if (!table[index]->headNode)
@@ -31,6 +35,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, long (*hashFunctio
         table[index]->headNode = malloc(sizeof(HeadNode));
         table[index]->headNode->head = node;
         table[index]->headNode->numElements = 1;
+        table[index]->headNode->keyAndValueSizeInBytes = (KEYLEN + valueLen);
         node->next = 0;
 
         pthread_mutex_unlock(table[index]->lock);
@@ -38,11 +43,18 @@ void Insert(FixedSizeHashTable table, void* key, void* value, long (*hashFunctio
     }
 
     // Remove the old key first.
-    int deleted = __INTERNAL_removeNode(table[index], key, equalityCheck);
+    short deletedValueLen;
+    int deleted = __INTERNAL_removeNode(table[index], key, &deletedValueLen, equalityCheck);
     if (!deleted)
     {
         table[index]->headNode->numElements++;
     }
+    else
+    {
+        table[index]->headNode->keyAndValueSizeInBytes -= (KEYLEN + valueLen);
+    }
+
+    table[index]->headNode->keyAndValueSizeInBytes += (KEYLEN + valueLen);
     // Not the first insert, so we want to place this to the front.
     // But since we already initialized the HeadNode, we just swap this and the current second.
     node->next = table[index]->headNode->head;
@@ -50,7 +62,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, long (*hashFunctio
     pthread_mutex_unlock(table[index]->lock);
 }
 
-int __INTERNAL_removeNode(HeadNode* headNode, void* key, int (*equalityCheck)(void*, void*))
+int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen, int (*equalityCheck)(void*, void*))
 {
     // Store head node
     Node* temp = headNode->head->next;
@@ -59,6 +71,7 @@ int __INTERNAL_removeNode(HeadNode* headNode, void* key, int (*equalityCheck)(vo
     // If head node itself holds the key to be deleted
     if (temp != NULL && equalityCheck(temp->key, key))
     {
+        *deletedValueLen = temp->valueLen;
         prev->next = temp->next; // Changed head
         free(temp); // free old head
         return 1;
@@ -75,6 +88,7 @@ int __INTERNAL_removeNode(HeadNode* headNode, void* key, int (*equalityCheck)(vo
     // If key was not present in linked list
     if (temp == NULL) return 0;
 
+    *deletedValueLen = temp->valueLen;
     // Unlink the node from linked list
     prev->next = temp->next;
 
@@ -83,7 +97,9 @@ int __INTERNAL_removeNode(HeadNode* headNode, void* key, int (*equalityCheck)(vo
 }
 
 // Returns 0 if doesn't exist. Else will populate value and return 1.
-int Get(FixedSizeHashTable table, void** value, void* key, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
+// NO LOCKING HERE? The plan is: can read from tables only flushes (so immutable).
+// Problem with the move to front? Alternatively just use an array based.
+int Get(FixedSizeHashTable table, void** value, short* valueLen, void* key, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
 {
     long index = hashFunction(key);
 
@@ -100,13 +116,14 @@ int Get(FixedSizeHashTable table, void** value, void* key, long (*hashFunction)(
         {
             // Just return it now, and move it to the front.
             *value = node->value;
-
+            *valueLen = node->valueLen;
+/* // TODO: fix this, with locking or not.
             if (prev != node)
             {
                 prev->next = node->next;
                 node->next = table[index]->headNode->head;
                 table[index]->headNode->head = node;
-            }
+            }*/
             return 1;
         }
         prev = node;
