@@ -9,7 +9,7 @@ long simpleHash2(long num);
 
 const long IN_MEMORY_SIZE = 1000000;
 const long TABLE_SIZE = 10000000;
-const long MAX_VALUE = 100000000;
+const long MAX_VALUE = 10000000;
 
 const long iterateSize = 1000000;
 
@@ -107,6 +107,7 @@ int main()
     int found = 0;
     int notfound = 0;
     WriteHashTableToDisk(GlobalTable, TABLE_SIZE);
+    ReadHashTableIntoMemory();
 
 /*
     for (long i = 0; i < MAX_VALUE; i++)
@@ -138,6 +139,7 @@ int main()
 
     printf("Found: %d Not found: %d \r\n", found, MAX_VALUE - found);
 */
+printf("Done writing");
         void* value2;
         short valueLen;
         int gotValue = Get(GlobalTable, &value2, &valueLen, (void*)22, simpleHash, simpleComparison);

@@ -51,7 +51,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
     }
     else
     {
-        table[index]->headNode->keyAndValueSizeInBytes -= (KEYLEN + valueLen);
+        table[index]->headNode->keyAndValueSizeInBytes -= (KEYLEN + deletedValueLen);
     }
 
     table[index]->headNode->keyAndValueSizeInBytes += (KEYLEN + valueLen);
