@@ -1,31 +1,72 @@
-#include "FixedSizeMoveToFrontHashMap.h"
+#include "FixedSizeHashMap.h"
 #include "mman.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 // TODO: create an index structure. (for indexes and their location in the file).
+// TODO: USE UNSIGNED CHARS!!
 
-void ReadHashTableIntoMemory()
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// !!  TODO: clean up the file descriptors  !!
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+// row structure at one index is at the moment:
+// row_len(int)->num_elements(int)->(rows: key(long at the moment)->val_len(short)->val))
+
+void ReadHashTableIntoMemory(long keyHash)
 {
-    /*
-    int fd = open("table_001.hx",O_RDWR);
-    int tableSize;
-    read(fd, &tableSize, sizeof(int));
-    printf("\r\nWe read the table size, it is: %d\r\n", tableSize);
-    FILE* file = fdopen(fd, "r");
-    fseek(file, 0L, SEEK_END);
-    int totalFileSize = ftell(file) - sizeof(int);
-    printf("\r\nTotal file size is: %d", totalFileSize);
-    fseek(file, sizeof(int), SEEK_SET); // seek back to after we read the int
+    // NOTE: keyHash is the key itself (TODO: have real keys and not just longs).
+    int indexFd = open("table_001.indx", O_RDONLY);
 
-    fclose(file);*/
-    // TODO: probably don't need this: just have an index structure to seek the file.
+    // Now try to read where this row is in the table:
+    int hashLocation = sizeof(uint32_t) * keyHash;
+
+    unsigned char lenBuf[sizeof(uint32_t)];
+    lseek(indexFd, hashLocation, SEEK_SET);
+    read(indexFd, lenBuf, sizeof(uint32_t)); // TODO: refactor reading a long / int!!
+    close(indexFd);
+
+    uint32_t rowLocation = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+
+    // We got the row location, now we can open the main file for reading, and read from the rowlocation.
+    int fd = open("table_001.hx", O_RDONLY);
+    lseek(fd, rowLocation, SEEK_SET);
+
+    // Now read the length of the row.
+    read(fd, lenBuf, sizeof(uint32_t)); // TODO: refactor reading a long
+    uint32_t rowLen = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+
+    // Ok got the row len, now we should read the row in memory (AND CACHE IT? TODO).
+    unsigned char* rowBuf = malloc(rowLen);
+    read(fd, rowBuf, rowLen);
+
+    // read number of elements:
+    uint32_t numElements = rowBuf[0] | (rowBuf[1] << 8) | (rowBuf[2] << 16) | (rowBuf[3] << 24);
+
+    int curOffset = 4;
+    for (int i = 0 ; i < numElements; i++)
+    {
+        // compare keys. TODO: have real key and not keyhash.
+        uint32_t curKey = rowBuf[curOffset] | (rowBuf[curOffset + 1] << 8) | (rowBuf[curOffset + 2] << 16) | (rowBuf[curOffset + 3] << 24);
+        uint16_t valueLen = rowBuf[curOffset + 4] | rowBuf[curOffset + 5];
+
+        if (curKey == keyHash)
+        {
+            printf("We found the key! Value is:");
+            char* val = malloc(valueLen);
+            memcpy(val, &rowBuf[curOffset+6], valueLen); // TODO: fix this, use pointers.
+            break;
+        }
+
+        curOffset += valueLen + 6; // 6 is key + value len itself
+    }
+    free(rowBuf);
+    close(fd);
 }
 
 void WriteHashTableToDisk(FixedSizeHashTable table, long tableSize)
 {
-    printf("Beginning to write to disk\r\n");
     // Calculate file size.
     size_t metadataSize = 4; // table size only for now.
     size_t totalSize = 0;
@@ -35,88 +76,71 @@ void WriteHashTableToDisk(FixedSizeHashTable table, long tableSize)
         if (table[i]->headNode != 0)
         {
             totalSize += table[i]->headNode->keyAndValueSizeInBytes;
-            totalSize += (sizeof(short) * table[i]->headNode->numElements); // length of the value (we assume we don't need to store keylen.. for now!).
-            totalSize += sizeof(int); // store num elements itself
-            totalSize += sizeof(int); // store total size of this row. (ie: the table[index].
+            totalSize += (sizeof(uint16_t) * table[i]->headNode->numElements); // length of the value (we assume we don't need to store keylen.. for now!).
+            totalSize += sizeof(uint32_t); // store num elements itself
+            totalSize += sizeof(uint32_t); // store total size of this row. (ie: the table[index].
         }
         else
         {
-            totalSize += sizeof(int); // only store sizeof int ZERO.
+            totalSize += sizeof(uint32_t); // only store sizeof int ZERO.
         }
     }
 
     totalSize += metadataSize;
 
-    int expectedSize = metadataSize;
-
-    printf("We got total size of %d\r\n", totalSize);
-
     int fd = open("table_001.hx", O_RDWR | O_CREAT, (mode_t)0600);
+    int indexFd = open("table_001.indx", O_RDWR | O_CREAT, (mode_t)0600);
 
     char *map = mmap(0, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
+    // for the index structure
+    int indexSize = tableSize * sizeof(uint32_t);
+    char *indexMap = mmap(0, indexSize, PROT_READ | PROT_WRITE, MAP_SHARED, indexFd, 0); // seems to work, but have to read bytes carefully! From right to left!
+
     // Need some space to write metadata.
-    // TODO:
     memcpy(map, &tableSize, metadataSize);
 
-    long offset = metadataSize;
-    for (long i = 0; i < tableSize; i++)
+    uint32_t offset = metadataSize;
+    uint32_t indexOffset = 0;
+    for (uint32_t i = 0; i < tableSize; i++)
     {
-        int curDepth = 0;
         if (table[i]->headNode != 0)
         {
-            expectedSize += table[i]->headNode->keyAndValueSizeInBytes;
-            expectedSize += (sizeof(short) * table[i]->headNode->numElements); // length of the value (we assume we don't need to store keylen.. for now!).
-            expectedSize += sizeof(int); // store num elements itself
-            expectedSize += sizeof(int); // store total size of this row. (ie: the table[index].
-            if (i < 10) {
-                printf("We're at i = %d, offset = %d, %d, total size was %d\r\n", i, offset, table[i]->headNode->numElements, totalSize);
-            }
             Node* node = table[i]->headNode->head;
-            int totalRowSizeOffset = offset;
-            int totalRowSize = sizeof(int); // the number of elements.
+            uint32_t totalRowSizeOffset = offset;
+            uint32_t totalRowSize = sizeof(uint32_t); // the number of elements.
 
-            offset += sizeof(int); // skip ahead to allow to write the total size of row, after we calculate it.
-            memcpy(map + offset, &(table[i]->headNode->numElements), sizeof(int)); // write the number of elements here.
-            offset += sizeof(int);
+            memcpy(indexMap + indexOffset, &offset, sizeof(uint32_t)); //write the current offset to the index file
+
+            offset += sizeof(uint32_t); // skip ahead to allow to write the total size of row, after we calculate it.
+            memcpy(map + offset, &(table[i]->headNode->numElements), sizeof(uint32_t)); // write the number of elements here.
+            offset += sizeof(uint32_t);
             while(node)
             {
-                curDepth++;
-                totalRowSize += (KEYLEN + sizeof(short) + node->valueLen); // key + len of val + value.
-                if (offset + totalRowSize > totalSize) {
-                    printf("We exceeded at %d!\r\n", i);
-                }
+                totalRowSize += (KEYLEN + sizeof(uint16_t) + node->valueLen); // key + len of val + value.
                 memcpy(map + offset, &(node->key), KEYLEN); // write key
-                memcpy(map + offset + KEYLEN, &(node->valueLen), sizeof(short)); // write value len
-                memcpy(map + offset + KEYLEN + sizeof(short), node->value, node->valueLen); // write value.
-                offset += (node->valueLen + KEYLEN + sizeof(short));
-                //printf("We're at i = %d, offset = %d, %d, expected: %d, total size was %d\r\n", i, offset, table[i]->headNode->numElements, expectedSize, totalSize);
-                if (offset != expectedSize) {
-                    printf("They did not match at i:%d expected:%d offset:%d depth:%d, val: %s, len: %d, kvlen: %d\r\n", i, expectedSize, offset, curDepth, node->value, node->valueLen, table[i]->headNode->keyAndValueSizeInBytes);
-                    return;
-                }
+                memcpy(map + offset + KEYLEN, &(node->valueLen), sizeof(uint16_t)); // write value len
+                memcpy(map + offset + KEYLEN + sizeof(uint16_t), node->value, node->valueLen); // write value.
+                offset += (node->valueLen + KEYLEN + sizeof(uint16_t));
                 node = node->next;
             }
             // now rewrite the len of total row.
-            memcpy(map + totalRowSizeOffset, &totalRowSize, sizeof(int));
+            // THIS DOES NOT INCLUDE THE LEN OF THIS LONG ITSELF!. So if allocating an array that includes this size, need to add sizeof(long)
+            memcpy(map + totalRowSizeOffset, &totalRowSize, sizeof(uint32_t));
         }
         else
         {
             // this node was not initialized, we still want to write a zero here, cause we assume our tables are not sparsely populated.
             // TODO: think of a better plan (or use RLE compression etc.)
-            memset(map + offset, 0, sizeof(int));
-            offset += sizeof(int);
-            expectedSize += sizeof(int);
+            memset(map + offset, 0, sizeof(uint32_t));
+            memset(indexMap + indexOffset, 0, sizeof(uint32_t));
+            offset += sizeof(uint32_t);
         }
+        indexOffset += sizeof(uint32_t);
     }
 
-    printf("We're done with offset: %d out of total size: %d expected: %d\r\n", offset, totalSize, expectedSize);
-
-    //memcpy(map, text, strlen(text));
-    //memcpy((char*)map + 11, text, strlen(text));
-    //msync(map, textsize, MS_SYNC);
+    munmap(indexMap, indexSize);
     munmap(map, totalSize);
     close(fd);
 
-    //return 0;
 }

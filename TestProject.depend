@@ -1,11 +1,11 @@
 # depslib dependency file v1.0
-1549735846 source:c:\test_program\testproject\main.c
+1551505502 source:c:\test_program\testproject\main.c
 	<stdio.h>
 	<stdlib.h>
-	"FixedSizeMoveToFrontHashMap.h"
+	"FixedSizeHashMap.h"
 	"mtwister.h"
 
-1549351634 c:\test_program\testproject\fixedsizemovetofronthashmap.h
+1549749785 c:\test_program\testproject\fixedsizemovetofronthashmap.h
 	<pthread.h>
 
 1549735820 source:c:\test_program\testproject\fixedsizemovetofronthashmap.c
@@ -19,8 +19,8 @@
 
 1548737286 c:\test_program\testproject\mtwister.h
 
-1549735839 source:c:\test_program\testproject\tableflusher.c
-	"FixedSizeMoveToFrontHashMap.h"
+1551507819 source:c:\test_program\testproject\tableflusher.c
+	"FixedSizeHashMap.h"
 	"mman.h"
 	<fcntl.h>
 	<stdio.h>
@@ -36,4 +36,14 @@
 	<_mingw.h>
 	<stdint.h>
 	<sys/types.h>
+
+1551506460 source:c:\test_program\testproject\fixedsizehashmap.c
+	"FixedSizeHashMap.h"
+	<stdio.h>
+	<stdlib.h>
+	<pthread.h>
+
+1551506510 c:\test_program\testproject\fixedsizehashmap.h
+	<pthread.h>
+	<stdint.h>
 

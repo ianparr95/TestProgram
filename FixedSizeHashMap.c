@@ -1,4 +1,4 @@
-#include "FixedSizeMoveToFrontHashMap.h"
+#include "FixedSizeHashMap.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -19,8 +19,13 @@ FixedSizeHashTable CreateFixedSizeHashMap(long size)
 
 short KEYLEN = 4;
 
+int TotalInserts = 0;
+
+// TODO: have a max total inserts for the table.
 void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
 {
+    asm volatile("lock; incl %0" : "=m" (TotalInserts) : "m"(TotalInserts));
+
     long index = hashFunction(key);
 
     Node* node = malloc(sizeof(Node));
@@ -43,7 +48,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
     }
 
     // Remove the old key first.
-    short deletedValueLen;
+    uint16_t deletedValueLen;
     int deleted = __INTERNAL_removeNode(table[index], key, &deletedValueLen, equalityCheck);
     if (!deleted)
     {

@@ -1,18 +1,19 @@
 #include <pthread.h>
+#include <stdint.h>
 
 typedef struct Node
 {
     struct Node* next;
     void* key;
     void* value;
-    short valueLen;
+    uint16_t valueLen;
 } Node;
 
 typedef struct HeadNode
 {
     struct Node* head;
-    int numElements;
-    int keyAndValueSizeInBytes;
+    uint32_t numElements;
+    uint32_t keyAndValueSizeInBytes;
 } HeadNode;
 
 typedef struct HeadNodeAndLock
@@ -29,3 +30,5 @@ void Insert(FixedSizeHashTable, void*, void*, short, long (*hashFunction)(void*)
 int Get(FixedSizeHashTable, void**, short*, void*, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*));
 
 extern short KEYLEN;
+
+extern int TotalInserts;

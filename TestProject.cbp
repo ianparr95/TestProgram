@@ -31,10 +31,10 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
-		<Unit filename="FixedSizeMoveToFrontHashMap.c">
+		<Unit filename="FixedSizeHashMap.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="FixedSizeMoveToFrontHashMap.h" />
+		<Unit filename="FixedSizeHashMap.h" />
 		<Unit filename="TableFlusher.c">
 			<Option compilerVar="CC" />
 		</Unit>

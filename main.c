@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "FixedSizeMoveToFrontHashMap.h"
+#include "FixedSizeHashMap.h"
 #include "mtwister.h"
 
 long simpleHash(void* data);
@@ -8,10 +8,10 @@ int simpleComparison(void*, void*);
 long simpleHash2(long num);
 
 const long IN_MEMORY_SIZE = 1000000;
-const long TABLE_SIZE = 10000000;
-const long MAX_VALUE = 10000000;
+const long TABLE_SIZE = 90;
+const long MAX_VALUE = 1000; // 100000000
 
-const long iterateSize = 1000000;
+const long iterateSize = 1000; // 10000000
 
 pthread_t tid[10];
 //pthread_t tid2[10];
@@ -107,7 +107,9 @@ int main()
     int found = 0;
     int notfound = 0;
     WriteHashTableToDisk(GlobalTable, TABLE_SIZE);
-    ReadHashTableIntoMemory();
+    ReadHashTableIntoMemory(4); // just try to read this value.
+
+    printf("We inserted in total: %d\r\n", TotalInserts);
 
 /*
     for (long i = 0; i < MAX_VALUE; i++)
