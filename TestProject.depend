@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1551505502 source:c:\test_program\testproject\main.c
+1552031538 source:c:\test_program\testproject\main.c
 	<stdio.h>
 	<stdlib.h>
 	"FixedSizeHashMap.h"
@@ -19,7 +19,7 @@
 
 1548737286 c:\test_program\testproject\mtwister.h
 
-1551507819 source:c:\test_program\testproject\tableflusher.c
+1552031577 source:c:\test_program\testproject\tableflusher.c
 	"FixedSizeHashMap.h"
 	"mman.h"
 	<fcntl.h>
@@ -37,13 +37,19 @@
 	<stdint.h>
 	<sys/types.h>
 
-1551506460 source:c:\test_program\testproject\fixedsizehashmap.c
+1551647623 source:c:\test_program\testproject\fixedsizehashmap.c
 	"FixedSizeHashMap.h"
 	<stdio.h>
 	<stdlib.h>
 	<pthread.h>
 
-1551506510 c:\test_program\testproject\fixedsizehashmap.h
+1551646705 c:\test_program\testproject\fixedsizehashmap.h
 	<pthread.h>
+	<stdint.h>
+
+1551653276 source:c:\test_program\testproject\sharedbitfunctions.c
+	<stdint.h>
+
+1551653351 c:\test_program\testproject\sharedbitfunctions.h
 	<stdint.h>
 

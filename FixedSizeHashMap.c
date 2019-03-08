@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 
-int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen, int (*equalityCheck)(void*, void*));
+int __INTERNAL_removeNode(HeadNode* headNode, void* key, uint16_t keyLen, uint16_t* deletedKeyLen);
 
 FixedSizeHashTable CreateFixedSizeHashMap(long size)
 {
@@ -17,12 +17,10 @@ FixedSizeHashTable CreateFixedSizeHashMap(long size)
     return table;
 }
 
-short KEYLEN = 4;
-
 int TotalInserts = 0;
 
 // TODO: have a max total inserts for the table.
-void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
+void Insert(FixedSizeHashTable table, void* key, uint16_t keyLen, void* value, uint16_t valueLen, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
 {
     asm volatile("lock; incl %0" : "=m" (TotalInserts) : "m"(TotalInserts));
 
@@ -30,6 +28,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
 
     Node* node = malloc(sizeof(Node));
     node->key = key;
+    node->keyLen = keyLen;
     node->value = value;
     node->valueLen = valueLen;
 
@@ -40,7 +39,7 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
         table[index]->headNode = malloc(sizeof(HeadNode));
         table[index]->headNode->head = node;
         table[index]->headNode->numElements = 1;
-        table[index]->headNode->keyAndValueSizeInBytes = (KEYLEN + valueLen);
+        table[index]->headNode->keyAndValueSizeInBytes = (keyLen + valueLen);
         node->next = 0;
 
         pthread_mutex_unlock(table[index]->lock);
@@ -49,17 +48,17 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
 
     // Remove the old key first.
     uint16_t deletedValueLen;
-    int deleted = __INTERNAL_removeNode(table[index], key, &deletedValueLen, equalityCheck);
+    int deleted = __INTERNAL_removeNode(table[index], key, keyLen, &deletedValueLen);
     if (!deleted)
     {
         table[index]->headNode->numElements++;
     }
     else
     {
-        table[index]->headNode->keyAndValueSizeInBytes -= (KEYLEN + deletedValueLen);
+        table[index]->headNode->keyAndValueSizeInBytes -= (keyLen + deletedValueLen);
     }
 
-    table[index]->headNode->keyAndValueSizeInBytes += (KEYLEN + valueLen);
+    table[index]->headNode->keyAndValueSizeInBytes += (keyLen + valueLen);
     // Not the first insert, so we want to place this to the front.
     // But since we already initialized the HeadNode, we just swap this and the current second.
     node->next = table[index]->headNode->head;
@@ -67,14 +66,13 @@ void Insert(FixedSizeHashTable table, void* key, void* value, short valueLen, lo
     pthread_mutex_unlock(table[index]->lock);
 }
 
-int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen, int (*equalityCheck)(void*, void*))
+int __INTERNAL_removeNode(HeadNode* headNode, void* key, uint16_t keyLen, uint16_t* deletedValueLen)
 {
     // Store head node
     Node* temp = headNode->head->next;
     Node* prev = headNode->head;
-
     // If head node itself holds the key to be deleted
-    if (temp != NULL && equalityCheck(temp->key, key))
+    if (temp != NULL && temp->keyLen == keyLen && memcmp(&temp->key, &key, keyLen) == 0)
     {
         *deletedValueLen = temp->valueLen;
         prev->next = temp->next; // Changed head
@@ -84,7 +82,7 @@ int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen,
 
     // Search for the key to be deleted, keep track of the
     // previous node as we need to change 'prev->next'
-    while (temp != NULL && !equalityCheck(temp->key, key))
+    while (temp != NULL && memcmp(&temp->key, &key, keyLen) != 0)
     {
         prev = temp;
         temp = temp->next;
@@ -104,6 +102,8 @@ int __INTERNAL_removeNode(HeadNode* headNode, void* key, short* deletedValueLen,
 // Returns 0 if doesn't exist. Else will populate value and return 1.
 // NO LOCKING HERE? The plan is: can read from tables only flushes (so immutable).
 // Problem with the move to front? Alternatively just use an array based.
+// Maybe just remove this function?
+// ALSO: need to handle key len?
 int Get(FixedSizeHashTable table, void** value, short* valueLen, void* key, long (*hashFunction)(void*), int (*equalityCheck)(void*, void*))
 {
     long index = hashFunction(key);

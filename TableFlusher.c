@@ -6,15 +6,25 @@
 
 // TODO: create an index structure. (for indexes and their location in the file).
 // TODO: USE UNSIGNED CHARS!!
+// TODO: MAKE SURE TO DO FREES FOR ALL MALLOCS!
 
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 // !!  TODO: clean up the file descriptors  !!
 // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 // row structure at one index is at the moment:
-// row_len(int)->num_elements(int)->(rows: key(long at the moment)->val_len(short)->val))
+// row_len(int)->num_elements(int)->(rows: key_len(short)->key->val_len(short)->val))
+static inline uint32_t bytes_to_uint32t(unsigned char bytes[])
+{
+    return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+}
 
-void ReadHashTableIntoMemory(long keyHash)
+static inline uint16_t bytes_to_uint16t(unsigned char bytes[])
+{
+    return bytes[0] | (bytes[1] << 8);
+}
+
+void PerformRead(long keyHash, void* key, unsigned char** result)
 {
     // NOTE: keyHash is the key itself (TODO: have real keys and not just longs).
     int indexFd = open("table_001.indx", O_RDONLY);
@@ -24,42 +34,44 @@ void ReadHashTableIntoMemory(long keyHash)
 
     unsigned char lenBuf[sizeof(uint32_t)];
     lseek(indexFd, hashLocation, SEEK_SET);
-    read(indexFd, lenBuf, sizeof(uint32_t)); // TODO: refactor reading a long / int!!
+    read(indexFd, lenBuf, sizeof(uint32_t));
     close(indexFd);
 
-    uint32_t rowLocation = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+    uint32_t rowLocation = bytes_to_uint32t(lenBuf);
 
     // We got the row location, now we can open the main file for reading, and read from the rowlocation.
     int fd = open("table_001.hx", O_RDONLY);
     lseek(fd, rowLocation, SEEK_SET);
 
     // Now read the length of the row.
-    read(fd, lenBuf, sizeof(uint32_t)); // TODO: refactor reading a long
-    uint32_t rowLen = lenBuf[0] | (lenBuf[1] << 8) | (lenBuf[2] << 16) | (lenBuf[3] << 24);
+    read(fd, lenBuf, sizeof(uint32_t));
+    uint32_t rowLen = bytes_to_uint32t(lenBuf);
 
     // Ok got the row len, now we should read the row in memory (AND CACHE IT? TODO).
     unsigned char* rowBuf = malloc(rowLen);
     read(fd, rowBuf, rowLen);
 
     // read number of elements:
-    uint32_t numElements = rowBuf[0] | (rowBuf[1] << 8) | (rowBuf[2] << 16) | (rowBuf[3] << 24);
+    uint32_t numElements = bytes_to_uint32t(rowBuf);
 
-    int curOffset = 4;
+    int curOffset = 4; // begin from after numElements.
     for (int i = 0 ; i < numElements; i++)
     {
         // compare keys. TODO: have real key and not keyhash.
-        uint32_t curKey = rowBuf[curOffset] | (rowBuf[curOffset + 1] << 8) | (rowBuf[curOffset + 2] << 16) | (rowBuf[curOffset + 3] << 24);
-        uint16_t valueLen = rowBuf[curOffset + 4] | rowBuf[curOffset + 5];
+        uint16_t keyLen = bytes_to_uint16t(rowBuf + curOffset);
+        void* readKey = rowBuf + curOffset + 2;
 
-        if (curKey == keyHash)
+        uint16_t valueLen = bytes_to_uint16t(rowBuf + curOffset + keyLen + 2);
+
+        if (memcmp(readKey, key, keyLen) == 0) // check if the passed in key and cur key are equal.
         {
-            printf("We found the key! Value is:");
-            char* val = malloc(valueLen);
-            memcpy(val, &rowBuf[curOffset+6], valueLen); // TODO: fix this, use pointers.
+            unsigned char* val = malloc(valueLen);
+            memcpy(val, &rowBuf[curOffset + keyLen + 4], valueLen); // 4, because we need to skip valueLen + keyLen themselves.
+            *result = val;
             break;
         }
 
-        curOffset += valueLen + 6; // 6 is key + value len itself
+        curOffset += valueLen + keyLen + 4; // 4 is the valueLen + keyLen itself
     }
     free(rowBuf);
     close(fd);
@@ -76,7 +88,7 @@ void WriteHashTableToDisk(FixedSizeHashTable table, long tableSize)
         if (table[i]->headNode != 0)
         {
             totalSize += table[i]->headNode->keyAndValueSizeInBytes;
-            totalSize += (sizeof(uint16_t) * table[i]->headNode->numElements); // length of the value (we assume we don't need to store keylen.. for now!).
+            totalSize += (sizeof(uint16_t) * 2 * table[i]->headNode->numElements); // size to store the keyLen + valueLen metadata.
             totalSize += sizeof(uint32_t); // store num elements itself
             totalSize += sizeof(uint32_t); // store total size of this row. (ie: the table[index].
         }
@@ -117,11 +129,12 @@ void WriteHashTableToDisk(FixedSizeHashTable table, long tableSize)
             offset += sizeof(uint32_t);
             while(node)
             {
-                totalRowSize += (KEYLEN + sizeof(uint16_t) + node->valueLen); // key + len of val + value.
-                memcpy(map + offset, &(node->key), KEYLEN); // write key
-                memcpy(map + offset + KEYLEN, &(node->valueLen), sizeof(uint16_t)); // write value len
-                memcpy(map + offset + KEYLEN + sizeof(uint16_t), node->value, node->valueLen); // write value.
-                offset += (node->valueLen + KEYLEN + sizeof(uint16_t));
+                totalRowSize += (sizeof(uint16_t) + node->keyLen + sizeof(uint16_t) + node->valueLen); // keylen + key + len of val + value.
+                memcpy(map + offset, &(node->keyLen), sizeof(uint16_t)); // write key len
+                memcpy(map + offset + sizeof(uint16_t), &(node->key), node->keyLen); // write key
+                memcpy(map + offset + sizeof(uint16_t) + node->keyLen, &(node->valueLen), sizeof(uint16_t)); // write value len
+                memcpy(map + offset + + sizeof(uint16_t) + node->keyLen + sizeof(uint16_t), node->value, node->valueLen); // write value.
+                offset += (node->valueLen + node->keyLen + sizeof(uint16_t) + sizeof(uint16_t));
                 node = node->next;
             }
             // now rewrite the len of total row.

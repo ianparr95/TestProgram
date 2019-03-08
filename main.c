@@ -8,10 +8,10 @@ int simpleComparison(void*, void*);
 long simpleHash2(long num);
 
 const long IN_MEMORY_SIZE = 1000000;
-const long TABLE_SIZE = 90;
-const long MAX_VALUE = 1000; // 100000000
+const long TABLE_SIZE = 50000;
+const long MAX_VALUE = 300000; // 10000000
 
-const long iterateSize = 1000; // 10000000
+const long iterateSize = 1000000; // 10000000
 
 pthread_t tid[10];
 //pthread_t tid2[10];
@@ -50,7 +50,7 @@ void* insertIntoTable(void* arg)
     MTRand r = seedRand(args[2]);
 
     for (long i = toIterate - iterateSize; i < toIterate; i++) {
-        Insert(table, (void*)simpleHash2(genRandLong(&r)), (void*)bytesRandom[i % 20], (i % 20) + 1,simpleHash, simpleComparison);
+        Insert(table, (void*)simpleHash2(genRandLong(&r)), 4, (void*)bytesRandom[i % 20], (i % 20) + 1,simpleHash, simpleComparison);
     }
 }
 
@@ -107,59 +107,27 @@ int main()
     int found = 0;
     int notfound = 0;
     WriteHashTableToDisk(GlobalTable, TABLE_SIZE);
-    ReadHashTableIntoMemory(4); // just try to read this value.
 
+    unsigned char** results = calloc(1, sizeof(char**));
+
+    unsigned char* key = malloc(4);
+    unsigned long n = 50004;
+
+    key[3] = (n >> 24) & 0xFF;
+    key[2] = (n >> 16) & 0xFF;
+    key[1] = (n >> 8) & 0xFF;
+    key[0] = n & 0xFF;
+
+    PerformRead(4, key, results); // just try to read this value.
+
+    printf("We read: %s\r\n", *results);
+    if (results != NULL)
+    {
+        free(*results);
+    }
+    free(results);
     printf("We inserted in total: %d\r\n", TotalInserts);
 
-/*
-    for (long i = 0; i < MAX_VALUE; i++)
-    {
-        if (i%100000 == 0) printf("i is %d\r\n", i);
-        int gotValue = Get(GlobalTable, &value, (void*)i, simpleHash, simpleComparison);
-        found += gotValue;
-    }
-  */
-  /*
-    for (int i = 0 ; i < 10 ; i++)
-    {
-        void** args = malloc(sizeof(FixedSizeHashTable*) + sizeof(int*));
-        args[0] = GlobalTable;
-        args[1] = (i+1) * iterateSize;
-        void* arg = args;
-        error = pthread_create(&(tid[i]), NULL, &getFromTable, arg);
-        if (error != 0)
-            printf("\nThread can't be created : [%s]", strerror(error));
-    }
-
-    for (int i = 0 ; i < 10 ; i ++)
-    {
-        void* threadFound = 0;
-        pthread_join(tid[i], &threadFound);
-        found += *(int*)threadFound;
-    }
-
-
-    printf("Found: %d Not found: %d \r\n", found, MAX_VALUE - found);
-*/
-printf("Done writing");
-        void* value2;
-        short valueLen;
-        int gotValue = Get(GlobalTable, &value2, &valueLen, (void*)22, simpleHash, simpleComparison);
-        if (gotValue) {
-            printf("\r\nValue here was: %s with len: %d\r\n", (char*)value2, valueLen);
-            char* numStart = (char*)value2;
-            for(int l = 0; l < 4; l++) {
-                printf("NUM IS: %d %d\r\n", (unsigned char)numStart[l], &numStart[l]);
-            }
-        } else {
-            printf("\r\nWe didnt get!\r\n");
-        }
-        gotValue = Get(GlobalTable, &value2, &valueLen, (void*)35, simpleHash, simpleComparison);
-        if (gotValue) {
-            printf("\r\nValue here was: %s with len: %d\r\n", (char*)value2, valueLen);
-        } else {
-            printf("We didnt get!");
-        }
     return 0;
 }
 
